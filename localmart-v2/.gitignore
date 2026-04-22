@@ -1,0 +1,12 @@
+node_modules/
+.env
+logs/
+src/uploads/shops/*.jpg
+src/uploads/shops/*.png
+src/uploads/shops/*.webp
+src/uploads/products/
+src/uploads/avatars/
+dist/
+*.log
+.DS_Store
+coverage/

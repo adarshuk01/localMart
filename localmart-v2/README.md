@@ -56,7 +56,7 @@ src/
 ```bash
 cd localmart-backend
 npm run seed   # seed demo data
-npm run dev    # → http://localhost:5000
+npm run dev    # → https://local-mart-crlc.vercel.app
 ```
 
 ### 2. Start the frontend
@@ -67,7 +67,7 @@ npm install
 npm run dev    # → http://localhost:5173
 ```
 
-> The Vite dev server proxies `/api` → `http://localhost:5000` automatically.
+> The Vite dev server proxies `/api` → `https://local-mart-crlc.vercel.app` automatically.
 
 ---
 

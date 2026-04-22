@@ -1,14 +1,15 @@
 const app = require('../src/app')
 const connectDB = require('../src/config/database')
 
-let isConnected = false
-
 module.exports = async (req, res) => {
-  if (!isConnected) {
-    await connectDB()
-    isConnected = true
-    console.log("MongoDB connected")
+  try {
+    await connectDB()   // ✅ always ensure connection
+    return app(req, res)
+  } catch (err) {
+    console.error("SERVER ERROR:", err)
+    res.status(500).json({
+      success: false,
+      message: err.message
+    })
   }
-
-  return app(req, res)
 }

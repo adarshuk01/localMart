@@ -1,18 +1,16 @@
-const multer = require('multer')
-const sharp  = require('sharp')
-const path   = require('path')
-const fs     = require('fs')
+const multer     = require('multer')
+const cloudinary = require('cloudinary').v2
+const sharp      = require('sharp')
 const { AppError } = require('./AppError')
 
-// ── Ensure upload dirs exist ───────────────────────────────
-const UPLOAD_BASE = path.join(__dirname, '..', 'uploads')
-const DIRS = ['shops', 'products', 'avatars']
-DIRS.forEach(d => {
-  const p = path.join(UPLOAD_BASE, d)
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true })
+// ── Cloudinary config ─────────────────────────────────────
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-// ── Multer memory storage ──────────────────────────────────
+// ── Multer — memory storage only (no disk writes) ─────────
 const storage = multer.memoryStorage()
 
 const fileFilter = (_req, file, cb) => {
@@ -27,31 +25,68 @@ const upload = multer({
   limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 },
 })
 
-// ── Process + save image ───────────────────────────────────
-const processImage = async (buffer, folder, filename, { width = 800, height = 600, quality = 80 } = {}) => {
-  const outputPath = path.join(UPLOAD_BASE, folder, filename)
-  await sharp(buffer)
-    .resize(width, height, { fit: 'cover', position: 'centre' })
-    .webp({ quality })
-    .toFile(outputPath)
-  return `/uploads/${folder}/${filename}`
+// ── Upload buffer to Cloudinary ───────────────────────────
+const uploadToCloudinary = (buffer, folder, publicId, { width, height, quality = 80 } = {}) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        public_id:     publicId,
+        overwrite:     true,
+        resource_type: 'image',
+        transformation: [
+          { width, height, crop: 'fill', gravity: 'center', quality, fetch_format: 'webp' },
+        ],
+      },
+      (error, result) => {
+        if (error) return reject(new AppError(`Cloudinary upload failed: ${error.message}`, 500))
+        resolve(result.secure_url)
+      }
+    )
+
+    // Convert to webp with sharp, then stream to Cloudinary
+    sharp(buffer)
+      .webp({ quality })
+      .toBuffer()
+      .then(webpBuffer => {
+        const { Readable } = require('stream')
+        const readable = new Readable()
+        readable.push(webpBuffer)
+        readable.push(null)
+        readable.pipe(uploadStream)
+      })
+      .catch(reject)
+  })
 }
 
-// ── Delete image ───────────────────────────────────────────
-const deleteImage = (url) => {
+// ── Delete image from Cloudinary by URL ───────────────────
+const deleteImage = async (url) => {
   if (!url) return
-  const filePath = path.join(__dirname, '..', url.replace('/uploads', 'uploads'))
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+  try {
+    // Extract public_id from Cloudinary URL
+    // e.g. https://res.cloudinary.com/<cloud>/image/upload/v123/shops/shop-abc.webp
+    const matches = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[^.]+$/)
+    if (matches && matches[1]) {
+      await cloudinary.uploader.destroy(matches[1])
+    }
+  } catch (err) {
+    console.error('Cloudinary delete error:', err.message)
+  }
 }
 
-// ── Preset processors ──────────────────────────────────────
-const shopImageProcessor    = (buffer, id) => processImage(buffer, 'shops',    `shop-${id}-${Date.now()}.webp`,    { width: 1200, height: 600 })
-const productImageProcessor = (buffer, id) => processImage(buffer, 'products', `product-${id}-${Date.now()}.webp`, { width: 600,  height: 600 })
-const avatarImageProcessor  = (buffer, id) => processImage(buffer, 'avatars',  `avatar-${id}-${Date.now()}.webp`,  { width: 200,  height: 200 })
+// ── Preset processors (drop-in replacements) ─────────────
+const shopImageProcessor    = (buffer, id) =>
+  uploadToCloudinary(buffer, 'shops',    `shop-${id}`,    { width: 1200, height: 600 })
+
+const productImageProcessor = (buffer, id) =>
+  uploadToCloudinary(buffer, 'products', `product-${id}`, { width: 600,  height: 600 })
+
+const avatarImageProcessor  = (buffer, id) =>
+  uploadToCloudinary(buffer, 'avatars',  `avatar-${id}`,  { width: 200,  height: 200 })
 
 module.exports = {
   upload,
-  processImage,
+  uploadToCloudinary,
   deleteImage,
   shopImageProcessor,
   productImageProcessor,

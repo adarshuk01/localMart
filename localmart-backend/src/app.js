@@ -7,8 +7,6 @@ const xss            = require('xss-clean')
 const hpp            = require('hpp')
 const compression    = require('compression')
 const cookieParser   = require('cookie-parser')
-const path           = require('path')
-
 const routes         = require('./routes')
 const errorHandler   = require('./middleware/errorHandler')
 const { apiLimiter } = require('./middleware/rateLimiter')
@@ -53,9 +51,6 @@ app.use(hpp({
 
 // ── Compression ───────────────────────────────────────────
 app.use(compression())
-
-// ── Static files (uploaded images) ───────────────────────
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 // ── Global rate limiting ──────────────────────────────────
 
